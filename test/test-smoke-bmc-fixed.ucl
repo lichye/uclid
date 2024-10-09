@@ -1,0 +1,34 @@
+/* This program shows the correct implementation of the buggy program in test-smoke-bmc.ucl */
+
+module main {
+  var a : integer;
+  var safe_var : boolean;
+
+  init {
+    a = 0;
+    safe_var = true;
+  }
+
+  next {
+    case  
+    (a >= 0) : {
+      a' = a - 1;
+      safe_var' = true;
+    }
+  
+    (a < 0) : {
+      a' = a + 1;
+      safe_var' = false;
+    }
+    esac
+  }
+
+  invariant safety_inv: safe_var == true;
+
+  control {
+    bmc(3);
+    check;
+    print_results;
+  }
+
+}

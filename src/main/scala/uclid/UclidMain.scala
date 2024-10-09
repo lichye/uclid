@@ -46,6 +46,7 @@ import scala.util.parsing.combinator._
 import scala.collection.immutable._
 import lang.{Identifier, Module,  _}
 import Utils.ParserErrorList
+import Utils.ParserErrorList
 import com.typesafe.scalalogging.Logger
 
 /** This is the main class for Uclid.
@@ -85,6 +86,8 @@ object UclidMain {
       ufToArray         : Boolean = false,
       printStackTrace   : Boolean = false,
       noLetify          : Boolean = false, // prevents SMTlib interface from letifying
+      smoke             : Boolean = false, 
+      
       /* 
         verbosities:
         0: essential: print nothing but results and error messages
@@ -158,12 +161,16 @@ object UclidMain {
         ( x, c) => {c.copy(verbose = x)}
       }.text("verbosity level (0-4)")
 
+      opt[Unit]("smoke").action{
+        (_, c) => c.copy(smoke = true)
+      }.text("Smoke test for unreachable code.")
+
       help("help").text("prints this usage text")
 
       arg[java.io.File]("<file> ...").unbounded().required().action {
         (x, c) => c.copy(files = c.files :+ x)
       }.text("List of files to analyze.")
-      
+
       // override def renderingMode = scopt.RenderingMode.OneColumn
     }
     val config = parser.parse(args, Config())
@@ -231,10 +238,18 @@ object UclidMain {
 
   def createCompilePassManager(config: Config, test: Boolean, mainModuleName: lang.Identifier, recompile : Boolean = false) = {
     val passManager = new PassManager("compile")
+
+    // test unreachable code
+    if (config.smoke) {
+      passManager.addPass(new SmokeRemover())
+      passManager.addPass(new SmokeInserter())
+    }
     // adds init and next to every module
     passManager.addPass(new ModuleCanonicalizer())
     // introduces LTL operators (which were parsed as function applications)
-    passManager.addPass(new LTLOperatorIntroducer())
+    if (!config.smoke) {
+      passManager.addPass(new LTLOperatorIntroducer())
+    }
     // imports all declarations except init and next declarations into module
     passManager.addPass(new ModuleImportRewriter())
     // imports types into module
@@ -338,7 +353,7 @@ object UclidMain {
     passManager.addPass(new ModuleCleaner())
     passManager.addPass(new BlockVariableRenamer())
     passManager
-  }  
+  }
   /** Parse modules, typecheck them, inline procedures, create LTL monitors, etc. */
   def compile(config: Config, mainModuleName : Identifier, test : Boolean = false): List[Module] = {
     UclidMain.printVerbose("Compiling modules")
@@ -348,15 +363,19 @@ object UclidMain {
     val passManager = createCompilePassManager(config, test, mainModuleName)
 
     val filenameAdderPass = new AddFilenameRewriter(None)
+    
     // Helper function to parse a single file.
     def parseFile(srcFile : String) : List[Module] = {
+    
       val file = scala.io.Source.fromFile(srcFile)
       // TODO: parse line by line instead of loading the complete file into a string
+
       val modules = UclidParser.parseModel(srcFile, file.mkString)
       file.close()
       filenameAdderPass.setFilename(srcFile)
       modules.map(m => filenameAdderPass.visit(m, Scope.empty)).flatten
     }
+
     val parsedModules = srcFiles.foldLeft(List.empty[Module]) {
       (acc, srcFile) => acc ++ parseFile(srcFile.getPath())
     }
@@ -441,8 +460,10 @@ object UclidMain {
     passManager.addPass(new ModuleEliminator(mainModuleName))
     // Expands (grounds) finite_forall and finite_exists quantifiers
     passManager.addPass(new FiniteQuantsExpander())
-    passManager.addPass(new LTLOperatorRewriter())
-    passManager.addPass(new LTLPropertyRewriter())
+    if (!config.smoke) {
+      passManager.addPass(new LTLOperatorRewriter())
+      passManager.addPass(new LTLPropertyRewriter())
+    }
     passManager.addPass(new Optimizer())
     // optimisation, has previously been called
     passManager.addPass(new ModuleCleaner())

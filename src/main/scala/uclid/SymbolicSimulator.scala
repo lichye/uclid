@@ -119,7 +119,14 @@ class SymbolicSimulator (module : Module) {
     new smt.Symbol("state_" + step + "_" + name, t)
   }
   def newConstantSymbol(name: String, t: smt.Type) = {
-    new smt.Symbol("const_" + name, t)
+    t match {
+      case smt.TesterType(id, inType) => {
+        val constructorName = name.substring("is_".length())
+        new smt.Symbol("(_ is " + constructorName + ")", t)
+      }
+      case smt.ConstructorType(id, inTypes, outTyp) => new smt.Symbol(name, t)
+      case _ => new smt.Symbol("const_" + name, t)
+    }
   }
   def newOracleSymbol(name: String, t: FunctionSig, binary : String) = {
     new smt.OracleSymbol("oracle_" + name, t, binary)
@@ -361,9 +368,11 @@ class SymbolicSimulator (module : Module) {
             printResults(proofResults, cmd.argObj, config)
             needToPrintResults=false
           case "print_cex" =>
-            printCEX(proofResults, cmd.args, cmd.argObj)
+            if (!config.smoke) {
+              printCEX(proofResults, cmd.args, cmd.argObj)
+            }
           case "print_cex_json" =>
-            if (!config.smtSolver.isEmpty)
+            if (!config.smtSolver.isEmpty && !config.smoke)
               printCEXJSON(proofResults, cmd.args, cmd.argObj, config, solver)
             else
               UclidMain.printError("print_cex_json works only with SMTLIB2Interface, skipping this command.")
@@ -1200,18 +1209,44 @@ class SymbolicSimulator (module : Module) {
       return
     
     Utils.assert(passCount + failCount + undetCount == assertionResults.size, "Unexpected assertion count.")
-    UclidMain.printResult("%d assertions passed.".format(passCount))
-    UclidMain.printResult("%d assertions failed.".format(failCount))
-    UclidMain.printResult("%d assertions indeterminate.".format(undetCount))
+
+    if (config.smoke) {
+
+      val (reachableLines, unreachableLines, undeterminedLines) = Utils.smokeTestCounter(assertionResults)
+
+      UclidMain.printResult("%d smoke tests run.".format(assertionResults.size))
+      UclidMain.printResult("%d code blocks tested.".format(reachableLines.size + unreachableLines.size + undeterminedLines.size))
+      UclidMain.printResult("%d warnings.".format(unreachableLines.size))
+      UclidMain.printResult("%d inconclusives.".format(undeterminedLines.size))
+
+      unreachableLines.foreach { (l) =>
+        if (l.contains("-")) {
+          UclidMain.printStatus(" WARNING -> %s are never run.".format(l))
+        } else {
+          UclidMain.printStatus(" WARNING -> %s is never run.".format(l))
+        }
+      }
+      undeterminedLines.foreach { (l) =>
+        UclidMain.printStatus(" WARNING -> %s's reachability is inconclusive.".format(l))
+      }
+
+    } else {
+      UclidMain.printResult("%d assertions passed.".format(passCount))
+      UclidMain.printResult("%d assertions failed.".format(failCount))
+      UclidMain.printResult("%d assertions indeterminate.".format(undetCount))
+    }
 
     if (config.verbose > 0) {
-      assertionResults.foreach{ (p) =>
-        if (p.result.isTrue) {
-          UclidMain.printStatus("  PASSED -> " + p.assert.toString)
+
+      if (!config.smoke) {
+        assertionResults.foreach{ (p) =>
+          if (p.result.isTrue) {
+            UclidMain.printStatus("  PASSED -> " + p.assert.toString)
+          }
         }
       }
     }
-    if (failCount > 0) {
+    if (failCount > 0 && !config.smoke) {
       assertionResults.foreach{ (p) =>
         if (p.result.isFalse) {
           UclidMain.printStatus("  FAILED -> " + p.assert.toString)
@@ -1219,7 +1254,7 @@ class SymbolicSimulator (module : Module) {
         }
       }
     }
-    if (undetCount > 0) {
+    if (undetCount > 0 && !config.smoke) {
       assertionResults.foreach{ (p) =>
         if (p.result.isUndefined) {
           UclidMain.printStatus("  UNDEF -> " + p.assert.toString)
@@ -1268,16 +1303,28 @@ class SymbolicSimulator (module : Module) {
     val simTable = res.assert.frameTable
     Utils.assert(simTable.size >= 1, "Must have at least one trace")
     val lastFrame = res.assert.iter
-    (0 to lastFrame).foreach{ case (i) => {
+    if(lastFrame==0){
       UclidMain.printStatus("=================================")
-      UclidMain.printStatus("Step #" + i.toString)
-      try{
-          printFrame(simTable, i, model, exprsToPrint, scope)
-      }  catch{
-            case _: Throwable => UclidMain.printError("error: unable to parse counterexample frame")
-      }
-      UclidMain.printStatus("=================================")
-    }}
+        UclidMain.printStatus("Step #0")
+        try{
+            printFrame(simTable, simTable.head.size-1, model, exprsToPrint, scope)
+        }  catch{
+              case _: Throwable => UclidMain.printError("error: unable to parse counterexample frame")
+        }
+        UclidMain.printStatus("=================================")
+    }
+    else{
+      (0 to lastFrame).foreach{ case (i) => {
+        UclidMain.printStatus("=================================")
+        UclidMain.printStatus("Step #" + i.toString)
+        try{
+            printFrame(simTable, i, model, exprsToPrint, scope)
+        }  catch{
+              case _: Throwable => UclidMain.printError("error: unable to parse counterexample frame")
+        }
+        UclidMain.printStatus("=================================")
+      }}
+    }
   }
 
   def printFrame(simTable : SimulationTable, frameNumber : Int, m : smt.Model, exprs : List[(Expr, String)], scope : Scope) {

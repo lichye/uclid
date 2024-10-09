@@ -69,8 +69,19 @@ object Converter {
         smt.RecordType(fields.map((f) => (f._1.toString, typeToSMT(f._2))))
       case lang.EnumType(ids) =>
         smt.EnumType(ids.map(_.name))
-      case lang.SynonymType(_) =>
-        throw new Utils.UnimplementedException("Synonym types must have been eliminated by now.")
+      case dt : lang.DataType =>
+        smt.DataType(dt.id.name, dt.constructors.map(c => ConstructorType(c._1.name, c._2.map(s => {
+          s._2 match {
+            case lang.SynonymType(id2) if id2 == dt.id => (s._1.name, smt.SelfReferenceType(id2.name))
+            case _ => (s._1.name, typeToSMT(s._2))
+          }
+        }), smt.SelfReferenceType(dt.id.name))))
+      case lang.ConstructorType(id, inTypes, outTyp) =>
+        smt.ConstructorType(id.name, inTypes.map(t => (t._1.name, typeToSMT(t._2))), typeToSMT(outTyp))
+      case lang.TesterType(id, inType) =>
+        smt.TesterType(id.name, typeToSMT(inType))
+      case t : lang.SynonymType =>
+        throw new Utils.UnimplementedException("Synonym types must have been eliminated by now. " + t + " from " + t.pos + " was not!")
       case lang.UndefinedType() | lang.ProcedureType(_, _) | lang.ExternalType(_, _) |
            lang.ModuleInstanceType(_) | lang.ModuleType(_, _, _, _, _, _, _, _, _) | lang.GroupType(_) =>
         throw new AssertionError("Type '" + typ.toString + "' not expected here.")
@@ -83,6 +94,8 @@ object Converter {
         lang.UninterpretedType(lang.Identifier(name))
       case smt.IntType =>
         lang.IntegerType()
+      case smt.RealType =>
+        lang.RealType()
       case smt.BoolType =>
         lang.BooleanType()
       case smt.BitVectorType(w) =>
@@ -97,6 +110,8 @@ object Converter {
         lang.RecordType(fields.map((f) => (lang.Identifier(f._1), smtToType(f._2))))
       case smt.EnumType(ids) =>
         lang.EnumType(ids.map(lang.Identifier(_)))
+      case dt: smt.DataType =>
+        lang.DataType(lang.Identifier(dt.id), dt.cstors.map(cstor => (lang.Identifier(cstor.id), cstor.inTypes.map(slctor => (lang.Identifier(slctor._1), smtToType(slctor._2))))))
       case _ =>
         throw new AssertionError("Type '" + typ.toString + "' not expected here.")
     }
@@ -325,6 +340,21 @@ object Converter {
           throw new Utils.UnimplementedException("Beta reduction is not implemented yet.")
         case _ =>
            throw new Utils.RuntimeError("Should never get here.")
+      }
+      case lang.QualifiedIdentifierApplication(qid, exprs) => {
+        lang.ULContext.stripMkTupleFunction(qid.toString) match {
+          case Some(s) => {
+            lang.ULContext.postTypeMap.get(s).get match {
+              case lang.RecordType(fields) => {
+                val exprsInSMT = exprs.map(e => _exprToSMT(e, scope, past, idToSMT))
+                val recordFields = fields.map(f => f._1.toString)
+                smt.ConstRecord(recordFields zip exprsInSMT)
+              }
+              case _ => throw new Utils.RuntimeError("Type conversion for " + s + " not supported in QualifiedIdentifierApplication.")
+            }
+          }
+          case None => throw new Utils.RuntimeError(qid.toString + " not found in postTypeMap.")
+        }
       }
       // Unimplemented operators.
       case lang.Lambda(_,_) =>

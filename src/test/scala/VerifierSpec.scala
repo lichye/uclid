@@ -88,6 +88,52 @@ class VerifierSanitySpec extends AnyFlatSpec {
   "test-assert-1.ucl" should "verify successfully." in {
     VerifierSpec.expectedFails("./test/test-assert-1.ucl", 0)
   }
+  "test-adt-0.ucl" should "verify all but one assertion." in {
+    VerifierSpec.expectedFails("./test/test-adt-0.ucl", 1)
+  }
+  "test-adt-1.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-1.ucl", 0)
+  }
+  "test-adt-2.ucl" should "fail to verify 6 assertions." in {
+    VerifierSpec.expectedFails("./test/test-adt-2.ucl", 6)
+  }
+  "test-adt-3.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-3.ucl", 0)
+  }
+  "test-adt-4.ucl" should "fail to verify 2 assertions." in {
+    VerifierSpec.expectedFails("./test/test-adt-4.ucl", 2)
+  }
+
+  "test-adt-7-testingacyclicality.ucl" should "fail to verify 3 assertions." in {
+    VerifierSpec.expectedFails("./test/test-adt-7-testingacyclicality.ucl", 3)
+  }
+  "test-adt-8-testingacyclicality.ucl" should "fail to verify 3 assertions." in {
+    VerifierSpec.expectedFails("./test/test-adt-8-testingacyclicality.ucl", 3)
+  }
+  "test-adt-14-goodselecting.ucl" should "fail to verify 2 assertions." in {
+    VerifierSpec.expectedFails("./test/test-adt-14-goodselecting.ucl", 2)
+  }
+  "test-adt-16-multiplemodules.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-16-multiplemodules.ucl", 0)
+  }
+  "test-adt-17-procedures.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-17-procedures.ucl", 0)
+  }
+  "test-adt-18.ucl" should "fail to verify 1 assertion." in {
+    VerifierSpec.expectedFails("./test/test-adt-18.ucl", 1)
+  }
+  "test-adt-19.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-19.ucl", 0)
+  }
+  "test-adt-23-datatypegeneration.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-23-datatypegeneration.ucl", 0)
+  }
+  "test-adt-25.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-25.ucl", 0)
+  }
+  "test-adt-26-goodconstructionordering.ucl" should "verify successfully." in {
+    VerifierSpec.expectedFails("./test/test-adt-26-goodconstructionordering.ucl", 0)
+  }
   "test-array-0.ucl" should "verify successfully." in {
     VerifierSpec.expectedFails("./test/test-array-0.ucl", 0)
   }
@@ -132,6 +178,13 @@ class VerifierSanitySpec extends AnyFlatSpec {
   }
   "test-assert-3.ucl" should "verify all assertions." in {
     VerifierSpec.expectedFails("./test/test-assert-3.ucl", 0)
+  }
+  "test-assert-4.ucl" should "fail to verify two assertions." in {
+    val output = SMTLIB2Spec.expectedFails("./test/test-assert-4.ucl", 2)
+    assert (output.contains("1000"))
+  }
+  "test-assert-5.ucl" should "fail to verify one assertions." in {
+    SMTLIB2Spec.expectedFails("./test/test-assert-5.ucl", 1)
   }
   "test-primed-variables-1.ucl" should "verify all assertions." in {
     VerifierSpec.expectedFails("./test/test-primed-variables-1.ucl", 0)
@@ -769,7 +822,7 @@ class PrintCexSpec extends AnyFlatSpec {
     }
     val str1 = ((json \ "property__trivial__1" \ "trace")(1) \ "cache1")(0)
     str1 match {
-      case JString(s) => assert(s.equals("const_record(_rec_valid := false, _rec_value := 0)"))
+      case JString(s) => assert(s.equals("const-record [_rec_valid := false, _rec_value := 0]"))
       case _ => assert(false)
     }
   }
@@ -782,7 +835,7 @@ class PrintCexSpec extends AnyFlatSpec {
     }
     val str1 = ((json \ "property__trivial__1" \ "trace")(1) \ "cache1")(0)
     str1 match {
-      case JString(s) => assert(s.equals("const_record(_rec_valid := false, _rec_value := const(0bv32, [bv4]bv32))"))
+      case JString(s) => assert(s.equals("const-record [_rec_valid := false, _rec_value := const(0bv32, [bv4]bv32)]"))
       case _ => assert(false)
     }
   }
@@ -806,7 +859,7 @@ class PrintCexSpec extends AnyFlatSpec {
     val json = parse(PrintCexSpec.checkSExprToUclidLang("./test/test-sexpr-uclid-lang-mixed-1.ucl"))
     val str0 = ((json \ "property__trivial__1" \ "trace")(1) \ "database")(0)
     str0 match {
-      case JString(s) => assert(s.equals("(const(const_record(_rec_uid := 2, _rec_color := false), [integer]utype_t))[2 -> const_record(_rec_uid := 3, _rec_color := false)]"))
+      case JString(s) => assert(s.equals("(const(const-record [_rec_uid := 2, _rec_color := false], [integer]utype_t))[2 -> const-record [_rec_uid := 3, _rec_color := false]]"))
       case _ => assert(false)
     }
   }
@@ -822,7 +875,7 @@ class PrintCexSpec extends AnyFlatSpec {
     val json = parse(PrintCexSpec.checkSExprToUclidLang("./test/test-sexpr-uclid-lang-mixed-3.ucl"))
     val str0 = ((json \ "property__trivial__1" \ "trace")(1) \ "database")(0)
     str0 match {
-      case JString(s) => assert(s.equals("(const(const_record(_rec_uid := 2, _rec_color := RED), [integer]utype_t))[2 -> const_record(_rec_uid := 3, _rec_color := RED)]"))
+      case JString(s) => assert(s.equals("(const(const-record [_rec_uid := 2, _rec_color := RED], [integer]utype_t))[2 -> const-record [_rec_uid := 3, _rec_color := RED]]"))
       case _ => assert(false)
     }
   }
